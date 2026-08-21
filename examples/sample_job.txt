@@ -1,0 +1,28 @@
+# Senior Software Engineer — Platform
+
+**Company:** Northstar Labs  
+**Location:** Remote (US)
+
+## About the role
+We are hiring a Senior Software Engineer to build and scale our customer-facing platform. You will own services end-to-end, improve reliability, and partner with product on roadmap delivery.
+
+## Requirements
+- 5+ years professional software engineering experience
+- Strong proficiency in Python and TypeScript
+- Experience designing and operating REST APIs and event-driven systems
+- Hands-on experience with AWS (ECS/EKS, Lambda, S3, RDS)
+- Familiarity with Docker, CI/CD, and infrastructure as code
+- Solid understanding of relational databases and SQL performance
+- Experience writing automated tests and improving observability
+
+## Nice to have
+- LangChain / LLM application experience
+- Kubernetes production experience
+- Prior work on applicant-tracking or HR-tech products
+
+## Responsibilities
+- Design, implement, and maintain backend services and APIs
+- Improve system reliability, latency, and developer experience
+- Collaborate with product and design on feature delivery
+- Mentor teammates through code review and technical design
+- Participate in on-call rotations and incident response

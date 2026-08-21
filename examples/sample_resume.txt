@@ -1,0 +1,33 @@
+Jordan Lee
+jordan.lee@email.com | (555) 010-4422 | LinkedIn: linkedin.com/in/jordanlee
+
+PROFESSIONAL SUMMARY
+Software engineer with 6 years of experience building web backends and cloud services.
+Focused on reliable APIs, clean architecture, and shipping product features with cross-functional teams.
+
+SKILLS
+Python, JavaScript, TypeScript, FastAPI, React, PostgreSQL, Redis, Docker, GitHub Actions,
+AWS (EC2, S3, RDS, Lambda), pytest, REST APIs, Agile
+
+EXPERIENCE
+Software Engineer II — BrightCart, Remote
+Jan 2022 – Present
+- Built and maintained FastAPI services powering checkout and inventory workflows used by 200k monthly users
+- Designed REST endpoints and background jobs for order events; reduced p95 API latency by 28%
+- Migrated key workloads to AWS Lambda and RDS; improved deployment frequency with GitHub Actions CI/CD
+- Added structured logging and dashboards that cut mean time to detect production issues
+- Mentored 2 junior engineers through design reviews and pair programming
+
+Software Engineer — Helio Health, Boston, MA
+Jun 2019 – Dec 2021
+- Developed Python microservices for patient scheduling and notifications
+- Wrote SQL-heavy reporting queries and indexes that sped up weekly ops reports by ~40%
+- Containerized services with Docker and supported staging releases
+- Collaborated with product managers to deliver HIPAA-conscious feature work
+
+EDUCATION
+B.S. Computer Science — Northeastern University, 2019
+
+PROJECTS
+- Personal expense tracker API (FastAPI + PostgreSQL + React)
+- Side project chatbot prototype using OpenAI APIs for FAQ routing
