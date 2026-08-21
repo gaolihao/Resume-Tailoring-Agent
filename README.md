@@ -101,4 +101,3 @@ src/resume_agent/
 - Best results when the source resume already has real overlap with the role.
 - Always review the tailored file before submitting — especially numbers and titles.
 - Keyword stuffing is intentionally discouraged by the quality-review node.
-# Resume-Tailoring-Agent
