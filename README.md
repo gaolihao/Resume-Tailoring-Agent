@@ -31,8 +31,10 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -e .
-copy .env.example .env   # then set OPENAI_API_KEY
+copy .env.example .env   # then set GOOGLE_API_KEY
 ```
+
+Get a Gemini key from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ## Usage
 
@@ -71,9 +73,10 @@ Outputs land in `output/`:
 
 | Variable | Purpose |
 |----------|---------|
-| `OPENAI_API_KEY` | Required |
-| `OPENAI_MODEL` | Default `gpt-4o-mini` |
-| `OPENAI_BASE_URL` | Optional (Azure, OpenRouter, local gateway) |
+| `GOOGLE_API_KEY` | Required (Gemini / Google AI Studio key) |
+| `GEMINI_API_KEY` | Optional alias for the same key |
+| `GEMINI_MODEL` | Default `gemini-3.5-flash-lite` |
+| `GEMINI_THINKING_LEVEL` | `minimal` (default), `low`, `medium`, or `high` |
 
 ## Project layout
 

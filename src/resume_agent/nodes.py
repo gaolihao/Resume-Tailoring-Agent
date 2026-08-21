@@ -34,7 +34,7 @@ def load_inputs(state: AgentState) -> dict:
 
 
 def analyze_job(state: AgentState) -> dict:
-    llm = get_llm(temperature=0).with_structured_output(JobAnalysis)
+    llm = get_llm().with_structured_output(JobAnalysis)
     result = llm.invoke(
         [
             SystemMessage(
@@ -52,7 +52,7 @@ def analyze_job(state: AgentState) -> dict:
 
 
 def analyze_gaps(state: AgentState) -> dict:
-    llm = get_llm(temperature=0).with_structured_output(GapAnalysis)
+    llm = get_llm().with_structured_output(GapAnalysis)
     job = state["job_analysis"]
     result = llm.invoke(
         [
@@ -75,7 +75,7 @@ def analyze_gaps(state: AgentState) -> dict:
 
 
 def tailor_resume(state: AgentState) -> dict:
-    llm = get_llm(temperature=0.3).with_structured_output(TailoredResume)
+    llm = get_llm().with_structured_output(TailoredResume)
     revision_notes = ""
     review = state.get("quality_review")
     if review and not review.approved:
@@ -112,7 +112,7 @@ def tailor_resume(state: AgentState) -> dict:
 
 
 def review_quality(state: AgentState) -> dict:
-    llm = get_llm(temperature=0).with_structured_output(QualityReview)
+    llm = get_llm().with_structured_output(QualityReview)
     result = llm.invoke(
         [
             SystemMessage(
