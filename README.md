@@ -39,20 +39,26 @@ Get a Gemini key from [Google AI Studio](https://aistudio.google.com/apikey).
 ## Usage
 
 ```bash
+# Activate the venv (Windows)
+.\.venv\Scripts\activate
+
 # Resume + job description file
-resume-agent tailor path\to\resume.pdf --job path\to\job.txt
+resume-agent examples\sample_resume.txt --job examples\sample_job.txt
+
+# Your own files
+resume-agent path\to\resume.pdf --job path\to\job.txt
 
 # Or paste the posting inline
-resume-agent tailor path\to\resume.docx --job-text "We are hiring a Senior Backend Engineer..."
+resume-agent path\to\resume.docx --job-text "We are hiring a Senior Backend Engineer..."
 
 # Custom output folder
-resume-agent tailor examples\sample_resume.txt --job examples\sample_job.txt -o output
+resume-agent examples\sample_resume.txt --job examples\sample_job.txt -o output
 ```
 
 Also:
 
 ```bash
-python -m resume_agent tailor examples\sample_resume.txt --job examples\sample_job.txt
+python -m resume_agent examples\sample_resume.txt --job examples\sample_job.txt
 ```
 
 Outputs land in `output/`:
