@@ -4,6 +4,8 @@ LangGraph agent that rewrites your resume against a job posting so it screens be
 
 Includes a **real tool-calling research agent** (model ⇄ tools loop), a **Streamlit chat UI**, and **Render** deployment config.
 
+**Live demo:** [https://resume-tailoring-agent.onrender.com/](https://resume-tailoring-agent.onrender.com/)
+
 ## What it does
 
 ```
@@ -79,6 +81,10 @@ Outputs:
 - `resume_<role>_report.md` — change log and keyword audit (optional)
 
 ## Deploy on Render
+
+**Live app:** [https://resume-tailoring-agent.onrender.com/](https://resume-tailoring-agent.onrender.com/)
+
+To deploy your own instance:
 
 1. Push this repo to GitHub
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect repo  
