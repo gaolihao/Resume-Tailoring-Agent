@@ -2,7 +2,7 @@
 
 LangGraph agent that rewrites your resume against a job posting so it screens better — without inventing experience.
 
-Includes a **real tool-calling research agent** (model ⇄ tools loop) before the tailor/review pipeline.
+Includes a **real tool-calling research agent** (model ⇄ tools loop), a **Streamlit chat UI**, and **Render** deployment config.
 
 ## What it does
 
@@ -24,7 +24,8 @@ export Markdown + DOCX
 ## Setup
 
 ```bash
-cd JobApplicationProject
+git clone https://github.com/gaolihao/Resume-Tailoring-Agent.git
+cd Resume-Tailoring-Agent
 python -m venv .venv
 
 # Windows
@@ -34,40 +35,72 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -e .
-copy .env.example .env   # then set GOOGLE_API_KEY
+cp .env.example .env   # then set GOOGLE_API_KEY
 ```
 
 Get a Gemini key from [Google AI Studio](https://aistudio.google.com/apikey).
 
-## Usage
+## Chat UI (local)
 
 ```bash
-# Activate the venv (Windows)
-.\.venv\Scripts\activate
+streamlit run streamlit_app.py
+```
 
+Open http://localhost:8501
+
+1. Upload a resume in the sidebar (or **Use sample resume**)
+2. Paste a job description in the chat (or click **Run with sample job posting**)
+3. Review tool trace, evidence checks, gap analysis, and tailored output
+4. Download Markdown or DOCX
+
+You can also paste a job posting URL directly in the chat — the research agent will call `fetch_job_from_url`.
+
+## CLI
+
+```bash
 # Resume + job description file
-resume-agent examples\sample_resume.txt --job examples\sample_job.txt
+resume-agent examples/sample_resume.txt --job examples/sample_job.txt
 
-# Resume + job posting URL (research agent calls fetch_job_from_url)
-resume-agent examples\sample_resume.txt --job-url "https://example.com/jobs/123"
+# Resume + job posting URL
+resume-agent examples/sample_resume.txt --job-url "https://example.com/jobs/123"
 
 # Or paste the posting inline
-resume-agent path\to\resume.docx --job-text "We are hiring a Senior Backend Engineer..."
-
-# Custom output folder
-resume-agent examples\sample_resume.txt --job examples\sample_job.txt -o output
+resume-agent path/to/resume.docx --job-text "We are hiring a Senior Backend Engineer..."
 ```
 
 Also:
 
 ```bash
-python -m resume_agent examples\sample_resume.txt --job examples\sample_job.txt
+python -m resume_agent examples/sample_resume.txt --job examples/sample_job.txt
 ```
 
 Outputs land in `output/`:
 
 - `resume_<role>.md` — tailored content + change log
 - `resume_<role>.docx` — Word version for applications
+
+## Deploy on Render
+
+1. Push this repo to GitHub
+2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect repo  
+   (uses `render.yaml` in the repo root)
+3. Set **`GOOGLE_API_KEY`** in the service environment variables
+4. Deploy — Render runs:
+   ```bash
+   pip install -e .
+   streamlit run streamlit_app.py --server.port=$PORT --server.address=0.0.0.0
+   ```
+
+**Manual deploy (without Blueprint):**
+
+| Setting | Value |
+|---------|--------|
+| Runtime | Python 3 |
+| Build | `pip install -e .` |
+| Start | `streamlit run streamlit_app.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true` |
+| Env | `GOOGLE_API_KEY` = your Gemini key |
+
+Free tier sleeps after inactivity; first load may take ~30s.
 
 ## Tool-calling research agent
 
@@ -106,6 +139,8 @@ The first graph node is a ReAct subgraph:
 ## Project layout
 
 ```
+streamlit_app.py     # Chat UI (local + Render)
+render.yaml          # Render Blueprint
 src/resume_agent/
   graph.py           # Outer StateGraph wiring
   research_agent.py  # Tool-calling ReAct subgraph
@@ -122,3 +157,4 @@ src/resume_agent/
 - Best results when the source resume already has real overlap with the role.
 - Always review the tailored file before submitting — especially numbers and titles.
 - Keyword stuffing is intentionally discouraged by the quality-review node.
+- On a public Render deploy, consider rate limits or a demo-only mode to control API cost.
