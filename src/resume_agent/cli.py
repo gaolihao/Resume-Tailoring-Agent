@@ -32,10 +32,15 @@ def tailor(
         "-j",
         help="Path to a job description text file",
     ),
+    job_url: Optional[str] = typer.Option(
+        None,
+        "--job-url",
+        help="Job posting URL (research agent fetches via tool)",
+    ),
     job_text: Optional[str] = typer.Option(
         None,
         "--job-text",
-        help="Job description as a raw string (alternative to --job)",
+        help="Job description as a raw string",
     ),
     output: Path = typer.Option(
         Path("output"),
@@ -46,16 +51,24 @@ def tailor(
     show: bool = typer.Option(
         True,
         "--show/--no-show",
-        help="Print a summary of the gap analysis and changes",
+        help="Print a summary of tools, gaps, and changes",
     ),
 ) -> None:
-    """Run the resume-tailoring LangGraph agent."""
-    if job is None and not job_text:
-        raise typer.BadParameter("Provide either --job PATH or --job-text '...'")
+    """Run the resume-tailoring LangGraph agent (includes tool-calling research)."""
+    provided = [x for x in (job, job_url, job_text) if x]
+    if len(provided) != 1:
+        raise typer.BadParameter(
+            "Provide exactly one of --job PATH, --job-url URL, or --job-text '...'"
+        )
 
-    job_input = str(job) if job is not None else (job_text or "")
+    if job is not None:
+        job_input = str(job)
+    elif job_url:
+        job_input = job_url
+    else:
+        job_input = job_text or ""
 
-    with console.status("[bold]Running resume agent..."):
+    with console.status("[bold]Running resume agent (research tools + tailor)..."):
         result = run_agent(
             resume_path=str(resume),
             job_path_or_text=job_input,
@@ -75,6 +88,15 @@ def tailor(
 
 
 def _print_summary(result: dict) -> None:
+    trace = result.get("tool_trace") or []
+    if trace:
+        lines = "\n".join(f"- {t}" for t in trace[:12])
+        console.print(Panel(lines, title="Tool-calling trace", border_style="yellow"))
+
+    evidence = result.get("evidence_notes")
+    if evidence:
+        console.print(Panel(evidence[:1200], title="Evidence notes", border_style="blue"))
+
     gaps = result.get("gap_analysis")
     tailored = result.get("tailored_resume")
     review = result.get("quality_review")
@@ -91,7 +113,11 @@ def _print_summary(result: dict) -> None:
         )
         console.print(table)
         console.print(
-            Panel(gaps.positioning_advice, title="Positioning advice", border_style="cyan")
+            Panel(
+                gaps.positioning_advice,
+                title="Positioning advice",
+                border_style="cyan",
+            )
         )
 
     if tailored:

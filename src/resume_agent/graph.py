@@ -4,7 +4,7 @@ from resume_agent.nodes import (
     analyze_gaps,
     analyze_job,
     export_resume,
-    load_inputs,
+    research_inputs,
     review_quality,
     should_revise,
     tailor_resume,
@@ -14,22 +14,24 @@ from resume_agent.state import AgentState
 
 def build_graph():
     """
-    Resume tailoring graph:
+    Document adaptation graph with a real tool-calling research agent:
 
-    load_inputs → analyze_job → analyze_gaps → tailor_resume
-      → review_quality ⇄ tailor_resume (max 2 revisions) → export_resume
+    research_inputs (model ⇄ tools)
+      → analyze_job → analyze_gaps → tailor_resume
+      → review_quality ⇄ tailor_resume (max 2 revisions)
+      → export_resume
     """
     graph = StateGraph(AgentState)
 
-    graph.add_node("load_inputs", load_inputs)
+    graph.add_node("research_inputs", research_inputs)
     graph.add_node("analyze_job", analyze_job)
     graph.add_node("analyze_gaps", analyze_gaps)
     graph.add_node("tailor_resume", tailor_resume)
     graph.add_node("review_quality", review_quality)
     graph.add_node("export_resume", export_resume)
 
-    graph.add_edge(START, "load_inputs")
-    graph.add_edge("load_inputs", "analyze_job")
+    graph.add_edge(START, "research_inputs")
+    graph.add_edge("research_inputs", "analyze_job")
     graph.add_edge("analyze_job", "analyze_gaps")
     graph.add_edge("analyze_gaps", "tailor_resume")
     graph.add_edge("tailor_resume", "review_quality")
@@ -59,5 +61,7 @@ def run_agent(
             "output_path": output_path,
             "revision_count": 0,
             "messages": [],
+            "tool_trace": [],
+            "evidence_notes": "",
         }
     )

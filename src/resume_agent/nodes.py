@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.llm import get_llm
 from resume_agent.models import GapAnalysis, JobAnalysis, QualityReview, TailoredResume
-from resume_agent.parsers import extract_resume_text, load_job_text
+from resume_agent.research_agent import run_research_agent
 from resume_agent.state import AgentState
 from resume_agent.writers import tailored_to_markdown, write_docx, write_markdown
 
@@ -23,14 +23,12 @@ CRITICAL TRUTH RULES:
 """.strip()
 
 
-def load_inputs(state: AgentState) -> dict:
-    resume_text = extract_resume_text(state["resume_path"])
-    job_text = load_job_text(state["job_path_or_text"])
-    return {
-        "resume_text": resume_text,
-        "job_text": job_text,
-        "revision_count": state.get("revision_count", 0),
-    }
+def research_inputs(state: AgentState) -> dict:
+    """Tool-calling research agent gathers resume/job text and evidence notes."""
+    return run_research_agent(
+        resume_path=state["resume_path"],
+        job_path_or_text=state["job_path_or_text"],
+    )
 
 
 def analyze_job(state: AgentState) -> dict:
@@ -54,18 +52,21 @@ def analyze_job(state: AgentState) -> dict:
 def analyze_gaps(state: AgentState) -> dict:
     llm = get_llm().with_structured_output(GapAnalysis)
     job = state["job_analysis"]
+    evidence = state.get("evidence_notes") or "None"
     result = llm.invoke(
         [
             SystemMessage(
                 content=(
                     "Compare a candidate resume to a job analysis for ATS/human screening. "
-                    "Be honest about gaps. Suggest reframes only when evidence exists.\n\n"
+                    "Be honest about gaps. Suggest reframes only when evidence exists.\n"
+                    "Use the research agent's evidence_check notes when available.\n\n"
                     f"{TRUTH_RULES}"
                 )
             ),
             HumanMessage(
                 content=(
                     f"## Job analysis (JSON)\n{job.model_dump_json(indent=2)}\n\n"
+                    f"## Research evidence notes\n{evidence}\n\n"
                     f"## Resume\n{state['resume_text']}"
                 )
             ),
@@ -84,12 +85,14 @@ def tailor_resume(state: AgentState) -> dict:
             f"Issues: {', '.join(review.issues)}"
         )
 
+    evidence = state.get("evidence_notes") or "None"
     result = llm.invoke(
         [
             SystemMessage(
                 content=(
                     "You rewrite resumes to improve screening match for a specific job. "
-                    "Mirror the posting's language where truthful. Keep a clean professional tone.\n\n"
+                    "Mirror the posting's language where truthful. Keep a clean professional tone.\n"
+                    "Only emphasize claims the research evidence notes mark as supported/partial.\n\n"
                     f"{TRUTH_RULES}"
                 )
             ),
@@ -97,6 +100,7 @@ def tailor_resume(state: AgentState) -> dict:
                 content=(
                     f"## Job analysis\n{state['job_analysis'].model_dump_json(indent=2)}\n\n"
                     f"## Gap analysis\n{state['gap_analysis'].model_dump_json(indent=2)}\n\n"
+                    f"## Research evidence notes\n{evidence}\n\n"
                     f"## Original resume\n{state['resume_text']}"
                     f"{revision_notes}\n\n"
                     "Produce a tailored resume that maximizes legitimate keyword and "
@@ -113,6 +117,7 @@ def tailor_resume(state: AgentState) -> dict:
 
 def review_quality(state: AgentState) -> dict:
     llm = get_llm().with_structured_output(QualityReview)
+    evidence = state.get("evidence_notes") or "None"
     result = llm.invoke(
         [
             SystemMessage(
@@ -121,12 +126,14 @@ def review_quality(state: AgentState) -> dict:
                     "resume is truthful, screening-optimized, and free of invented claims.\n\n"
                     f"{TRUTH_RULES}\n\n"
                     "Reject if: fabricated experience, ignored must-have matches that "
-                    "exist in the source, or awkward keyword stuffing."
+                    "exist in the source, claims contradicted by evidence_check notes, "
+                    "or awkward keyword stuffing."
                 )
             ),
             HumanMessage(
                 content=(
                     f"## Original resume\n{state['resume_text']}\n\n"
+                    f"## Research evidence notes\n{evidence}\n\n"
                     f"## Job analysis\n{state['job_analysis'].model_dump_json(indent=2)}\n\n"
                     f"## Tailored resume\n{state['tailored_resume'].model_dump_json(indent=2)}"
                 )

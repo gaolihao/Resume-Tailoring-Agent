@@ -14,6 +14,8 @@ class AgentState(TypedDict, total=False):
     job_path_or_text: str
     resume_text: str
     job_text: str
+    evidence_notes: str
+    tool_trace: list[str]
     job_analysis: JobAnalysis
     gap_analysis: GapAnalysis
     tailored_resume: TailoredResume

@@ -2,10 +2,13 @@
 
 LangGraph agent that rewrites your resume against a job posting so it screens better — without inventing experience.
 
+Includes a **real tool-calling research agent** (model ⇄ tools loop) before the tailor/review pipeline.
+
 ## What it does
 
 ```
-load resume (PDF / DOCX / TXT)
+research_inputs  (tool-calling ReAct agent)
+  tools: parse_resume | load_job_file | fetch_job_from_url | evidence_check
         ↓
 analyze job posting (skills, keywords, responsibilities)
         ↓
@@ -16,7 +19,7 @@ tailor resume  ⇄  quality review (max 2 revision loops)
 export Markdown + DOCX
 ```
 
-**Truth rules baked in:** the agent may rephrase, reorder, and emphasize what’s already on your resume. It will not fabricate jobs, metrics, tools, or credentials.
+**Truth rules baked in:** the agent may rephrase, reorder, and emphasize what’s already on your resume. It will not fabricate jobs, metrics, tools, or credentials. `evidence_check` is a deterministic overlap tool (not another LLM).
 
 ## Setup
 
@@ -45,8 +48,8 @@ Get a Gemini key from [Google AI Studio](https://aistudio.google.com/apikey).
 # Resume + job description file
 resume-agent examples\sample_resume.txt --job examples\sample_job.txt
 
-# Your own files
-resume-agent path\to\resume.pdf --job path\to\job.txt
+# Resume + job posting URL (research agent calls fetch_job_from_url)
+resume-agent examples\sample_resume.txt --job-url "https://example.com/jobs/123"
 
 # Or paste the posting inline
 resume-agent path\to\resume.docx --job-text "We are hiring a Senior Backend Engineer..."
@@ -65,6 +68,22 @@ Outputs land in `output/`:
 
 - `resume_<role>.md` — tailored content + change log
 - `resume_<role>.docx` — Word version for applications
+
+## Tool-calling research agent
+
+The first graph node is a ReAct subgraph:
+
+1. LLM decides which tools to call (`bind_tools`)
+2. `ToolNode` executes them
+3. Results return as `ToolMessage`s
+4. Loop until the model stops requesting tools
+
+| Tool | Purpose |
+|------|---------|
+| `parse_resume` | Extract text from PDF/DOCX/TXT |
+| `load_job_file` | Read a local JD file |
+| `fetch_job_from_url` | Download + clean a job posting URL |
+| `evidence_check` | Heuristic claim-vs-resume support check |
 
 ## Supported resume formats
 
@@ -88,12 +107,14 @@ Outputs land in `output/`:
 
 ```
 src/resume_agent/
-  graph.py      # LangGraph StateGraph wiring
-  nodes.py      # load → analyze → gap → tailor → review → export
-  models.py     # structured LLM outputs
-  parsers/      # PDF / DOCX / text extraction
-  writers/      # Markdown + DOCX export
-  cli.py        # Typer CLI
+  graph.py           # Outer StateGraph wiring
+  research_agent.py  # Tool-calling ReAct subgraph
+  tools.py           # parse_resume, fetch_job_from_url, evidence_check, ...
+  nodes.py           # research → analyze → gap → tailor → review → export
+  models.py          # structured LLM outputs
+  parsers/           # PDF / DOCX / text extraction
+  writers/           # Markdown + DOCX export
+  cli.py             # Typer CLI
 ```
 
 ## Notes
