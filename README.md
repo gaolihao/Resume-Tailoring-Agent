@@ -48,12 +48,12 @@ streamlit run streamlit_app.py
 
 Open http://localhost:8501
 
-1. Upload a resume in the sidebar (or **Use sample resume**)
-2. Paste a job description in the chat (or click **Run with sample job posting**)
+1. **Attach your resume** in the chat input (PDF, DOCX, TXT) or type `sample`
+2. **Paste a job description** or URL in the chat
 3. Review tool trace, evidence checks, gap analysis, and tailored output
 4. Download Markdown or DOCX
 
-You can also paste a job posting URL directly in the chat — the research agent will call `fetch_job_from_url`.
+Type `demo` to run the included sample resume + sample job in one step.
 
 ## CLI
 
