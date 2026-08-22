@@ -48,10 +48,9 @@ streamlit run streamlit_app.py
 
 Open http://localhost:8501
 
-1. **Attach your resume** in the chat input (PDF, DOCX, TXT) or type `sample`
-2. **Paste a job description** or URL in the chat
-3. Review tool trace, evidence checks, gap analysis, and tailored output
-4. Download Markdown or DOCX
+1. Attach your resume in the chat (or type `sample`)
+2. After it's loaded, paste the job description, URL, or type `sample` again for the demo job
+3. Review the results and download Markdown or DOCX
 
 Type `demo` to run the included sample resume + sample job in one step.
 
@@ -74,10 +73,10 @@ Also:
 python -m resume_agent examples/sample_resume.txt --job examples/sample_job.txt
 ```
 
-Outputs land in `output/`:
+Outputs:
 
-- `resume_<role>.md` — tailored content + change log
-- `resume_<role>.docx` — Word version for applications
+- `resume_<role>.<same-ext-as-upload>` — tailored resume in your original format (PDF/DOCX/TXT)
+- `resume_<role>_report.md` — change log and keyword audit (optional)
 
 ## Deploy on Render
 

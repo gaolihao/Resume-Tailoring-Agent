@@ -8,7 +8,7 @@ from resume_agent.llm import get_llm
 from resume_agent.models import GapAnalysis, JobAnalysis, QualityReview, TailoredResume
 from resume_agent.research_agent import run_research_agent
 from resume_agent.state import AgentState
-from resume_agent.writers import tailored_to_markdown, write_docx, write_markdown
+from resume_agent.writers import export_tailored_resume, tailored_to_markdown
 
 MAX_REVISIONS = 2
 
@@ -92,6 +92,8 @@ def tailor_resume(state: AgentState) -> dict:
                 content=(
                     "You rewrite resumes to improve screening match for a specific job. "
                     "Mirror the posting's language where truthful. Keep a clean professional tone.\n"
+                    "Preserve the original resume structure: same section order, role headers, "
+                    "and roughly the same number of bullets per role.\n"
                     "Only emphasize claims the research evidence notes mark as supported/partial.\n\n"
                     f"{TRUTH_RULES}"
                 )
@@ -104,7 +106,9 @@ def tailor_resume(state: AgentState) -> dict:
                     f"## Original resume\n{state['resume_text']}"
                     f"{revision_notes}\n\n"
                     "Produce a tailored resume that maximizes legitimate keyword and "
-                    "responsibility alignment."
+                    "responsibility alignment.\n"
+                    "Use experience_entries with role_lines and bullets matching the "
+                    "original resume's role headers and bullet counts."
                 )
             ),
         ]
@@ -153,24 +157,20 @@ def should_revise(state: AgentState) -> str:
 
 def export_resume(state: AgentState) -> dict:
     tailored = state["tailored_resume"]
+    source_path = Path(state["resume_path"])
+    out_dir = Path(state.get("output_path") or "output")
+
+    paths = export_tailored_resume(
+        source_path=source_path,
+        tailored=tailored,
+        out_dir=out_dir,
+        job=state.get("job_analysis"),
+    )
     markdown = tailored_to_markdown(tailored, state.get("job_analysis"))
 
-    out_dir = Path(state.get("output_path") or "output")
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    job = state.get("job_analysis")
-    slug = _slug(job.title if job else "role")
-    md_path = out_dir / f"resume_{slug}.md"
-    docx_path = out_dir / f"resume_{slug}.docx"
-
-    write_markdown(markdown, md_path)
-    write_docx(tailored, docx_path, job)
-
-    return {"tailored_markdown": markdown, "output_path": str(out_dir)}
-
-
-def _slug(value: str) -> str:
-    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in value)
-    while "__" in cleaned:
-        cleaned = cleaned.replace("__", "_")
-    return cleaned.strip("_")[:60] or "tailored"
+    return {
+        "tailored_markdown": markdown,
+        "output_path": str(out_dir),
+        "output_file_path": str(paths["primary"]),
+        "output_report_path": str(paths["report"]),
+    }

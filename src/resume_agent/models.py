@@ -60,16 +60,24 @@ class GapAnalysis(BaseModel):
     )
 
 
+class ExperienceEntry(BaseModel):
+    """One role block, preserving the original resume layout."""
+
+    role_lines: list[str] = Field(
+        description="1-2 header lines for the role (title/company and dates)"
+    )
+    bullets: list[str] = Field(
+        description="Achievement bullets only — no role prefix, no leading dash"
+    )
+
+
 class TailoredResume(BaseModel):
     """Truthful rewrite of the resume for a specific posting."""
 
     professional_summary: str
     skills_section: list[str]
-    experience_bullets: list[str] = Field(
-        description=(
-            "Rewritten experience bullets, grouped as "
-            "'Role | Company | Date — bullet text' lines"
-        )
+    experience_entries: list[ExperienceEntry] = Field(
+        description="Experience section mirroring the original role + bullet structure"
     )
     education: list[str] = Field(default_factory=list)
     additional_sections: list[str] = Field(
@@ -83,6 +91,16 @@ class TailoredResume(BaseModel):
         default_factory=list,
         description="Job keywords naturally incorporated from real experience",
     )
+
+    @property
+    def experience_bullets(self) -> list[str]:
+        """Flattened bullets for summaries and legacy callers."""
+        lines: list[str] = []
+        for entry in self.experience_entries:
+            prefix = " — ".join(entry.role_lines) if entry.role_lines else "Experience"
+            for bullet in entry.bullets:
+                lines.append(f"{prefix} — {bullet}")
+        return lines
 
 
 class QualityReview(BaseModel):

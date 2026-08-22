@@ -22,5 +22,7 @@ class AgentState(TypedDict, total=False):
     quality_review: QualityReview
     tailored_markdown: str
     output_path: str
+    output_file_path: str
+    output_report_path: str
     revision_count: int
     messages: Annotated[list, add_messages]

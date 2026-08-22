@@ -7,18 +7,21 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
 from resume_agent.models import JobAnalysis, TailoredResume
+from resume_agent.structure import export_preserved_resume
 
 
 def tailored_to_markdown(
     tailored: TailoredResume,
     job: JobAnalysis | None = None,
+    *,
+    include_audit: bool = True,
 ) -> str:
     lines: list[str] = []
-    if job:
+    if job and include_audit:
         target = job.title
         if job.company:
             target = f"{job.title} @ {job.company}"
-        lines.append(f"# Tailored Resume — {target}")
+        lines.append(f"# Tailoring report — {target}")
         lines.append("")
 
     lines.extend(
@@ -32,31 +35,38 @@ def tailored_to_markdown(
             "## Experience",
         ]
     )
-    for bullet in tailored.experience_bullets:
-        lines.append(f"- {bullet}")
+    for entry in tailored.experience_entries:
+        for role_line in entry.role_lines:
+            lines.append(role_line)
+        for bullet in entry.bullets:
+            lines.append(f"- {bullet}")
+        lines.append("")
 
     if tailored.education:
-        lines.extend(["", "## Education"])
+        lines.extend(["## Education"])
         for item in tailored.education:
             lines.append(f"- {item}")
+        lines.append("")
 
     if tailored.additional_sections:
-        lines.extend(["", "## Additional"])
+        lines.extend(["## Additional"])
         for item in tailored.additional_sections:
             lines.append(f"- {item}")
+        lines.append("")
 
-    lines.extend(["", "## Changes Made"])
-    for change in tailored.changes_made:
-        lines.append(f"- {change}")
+    if include_audit:
+        lines.extend(["## Changes Made"])
+        for change in tailored.changes_made:
+            lines.append(f"- {change}")
 
-    if tailored.keywords_injected:
-        lines.extend(
-            [
-                "",
-                "## Keywords Incorporated",
-                ", ".join(tailored.keywords_injected),
-            ]
-        )
+        if tailored.keywords_injected:
+            lines.extend(
+                [
+                    "",
+                    "## Keywords Incorporated",
+                    ", ".join(tailored.keywords_injected),
+                ]
+            )
 
     return "\n".join(lines).strip() + "\n"
 
@@ -66,11 +76,34 @@ def write_markdown(content: str, path: Path) -> Path:
     return path
 
 
+def export_tailored_resume(
+    source_path: Path,
+    tailored: TailoredResume,
+    out_dir: Path,
+    job: JobAnalysis | None = None,
+) -> dict[str, Path]:
+    """Write tailored resume in the original format plus an audit report."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = _slug(job.title if job else "tailored")
+    suffix = source_path.suffix.lower() or ".txt"
+
+    primary_path = out_dir / f"resume_{slug}{suffix}"
+    report_path = out_dir / f"resume_{slug}_report.md"
+
+    export_preserved_resume(source_path, tailored, primary_path)
+    write_markdown(
+        tailored_to_markdown(tailored, job, include_audit=True),
+        report_path,
+    )
+    return {"primary": primary_path, "report": report_path}
+
+
 def write_docx(
     tailored: TailoredResume,
     path: Path,
     job: JobAnalysis | None = None,
 ) -> Path:
+    """Legacy generic DOCX writer (prefer export_tailored_resume)."""
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
@@ -89,8 +122,11 @@ def write_docx(
     doc.add_paragraph(", ".join(tailored.skills_section))
 
     doc.add_heading("Experience", level=2)
-    for bullet in tailored.experience_bullets:
-        doc.add_paragraph(bullet, style="List Bullet")
+    for entry in tailored.experience_entries:
+        for role_line in entry.role_lines:
+            doc.add_paragraph(role_line)
+        for bullet in entry.bullets:
+            doc.add_paragraph(bullet, style="List Bullet")
 
     if tailored.education:
         doc.add_heading("Education", level=2)
@@ -104,3 +140,10 @@ def write_docx(
 
     doc.save(str(path))
     return path
+
+
+def _slug(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in value)
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
+    return cleaned.strip("_")[:60] or "tailored"

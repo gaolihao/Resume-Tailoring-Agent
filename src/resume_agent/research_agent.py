@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, Callable, TypedDict
 from urllib.parse import urlparse
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -36,6 +36,9 @@ class ResearchState(TypedDict):
     messages: Annotated[list, add_messages]
 
 
+EventCallback = Callable[[dict[str, Any]], None]
+
+
 def build_research_agent():
     """ReAct-style tool-calling subgraph: model ⇄ tools until done."""
     model = get_llm().bind_tools(RESEARCH_TOOLS)
@@ -53,28 +56,50 @@ def build_research_agent():
     return graph.compile()
 
 
-def run_research_agent(resume_path: str, job_path_or_text: str) -> dict:
-    """
-    Run the tool-calling research agent and normalize outputs for the outer graph.
+def _emit(callback: EventCallback | None, event: dict[str, Any]) -> None:
+    if callback:
+        callback(event)
 
-    Returns resume_text, job_text, evidence_notes, and tool_trace.
-    Falls back to direct parsers if the model skipped required tools.
-    """
-    agent = build_research_agent()
-    result = agent.invoke(
-        {
-            "messages": [
-                SystemMessage(content=RESEARCH_SYSTEM),
-                HumanMessage(
-                    content=(
-                        f"Resume path: {resume_path}\n"
-                        f"Job source (path, URL, or raw text):\n{job_path_or_text}"
-                    )
-                ),
-            ]
-        }
-    )
-    messages = result["messages"]
+
+def _preview_tool_args(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name == "parse_resume":
+        return f"path=`{args.get('path', '')}`"
+    if tool_name == "load_job_file":
+        return f"path=`{args.get('path', '')}`"
+    if tool_name == "fetch_job_from_url":
+        return f"url=`{args.get('url', '')}`"
+    if tool_name == "evidence_check":
+        claim = str(args.get("claim", ""))[:80]
+        return f"claim=\"{claim}\""
+    return json.dumps(args, ensure_ascii=False)[:120]
+
+
+def _preview_tool_result(tool_name: str, content: str) -> str:
+    if tool_name == "evidence_check":
+        try:
+            payload = json.loads(content)
+            return (
+                f"status={payload.get('status')} "
+                f"coverage={payload.get('coverage')} "
+                f"claim=\"{str(payload.get('claim', ''))[:60]}\""
+            )
+        except json.JSONDecodeError:
+            pass
+    if _is_error_payload(content):
+        try:
+            return f"error: {json.loads(content).get('error', content)[:120]}"
+        except json.JSONDecodeError:
+            return content[:120]
+    one_line = " ".join(content.split())
+    return (one_line[:180] + "…") if len(one_line) > 180 else one_line
+
+
+def _finalize_research_result(
+    messages: list,
+    resume_path: str,
+    job_path_or_text: str,
+    on_event: EventCallback | None = None,
+) -> dict:
     tool_outputs = _collect_tool_outputs(messages)
     tool_trace = [
         f"{name}: {preview}"
@@ -89,10 +114,26 @@ def run_research_agent(resume_path: str, job_path_or_text: str) -> dict:
     if not resume_text:
         resume_text = extract_resume_text(resume_path)
         tool_trace.append("fallback: parse_resume via direct parser")
+        _emit(
+            on_event,
+            {
+                "event": "fallback",
+                "node": "research_inputs",
+                "detail": "Used direct resume parser fallback.",
+            },
+        )
 
     if not job_text:
         job_text = load_job_text(job_path_or_text)
         tool_trace.append("fallback: job text via direct loader")
+        _emit(
+            on_event,
+            {
+                "event": "fallback",
+                "node": "research_inputs",
+                "detail": "Used direct job text loader fallback.",
+            },
+        )
 
     evidence_notes = _evidence_notes(tool_outputs)
     summary = _last_ai_text(messages)
@@ -109,8 +150,130 @@ def run_research_agent(resume_path: str, job_path_or_text: str) -> dict:
     }
 
 
+def stream_research_agent(
+    resume_path: str,
+    job_path_or_text: str,
+    on_event: EventCallback | None = None,
+) -> dict:
+    """Run the research ReAct agent, emitting tool/thought events step by step."""
+    agent = build_research_agent()
+    input_state: ResearchState = {
+        "messages": [
+            SystemMessage(content=RESEARCH_SYSTEM),
+            HumanMessage(
+                content=(
+                    f"Resume path: {resume_path}\n"
+                    f"Job source (path, URL, or raw text):\n{job_path_or_text}"
+                )
+            ),
+        ]
+    }
+
+    _emit(
+        on_event,
+        {
+            "event": "node_start",
+            "node": "research_inputs",
+            "title": "Research agent",
+            "detail": "Planning tool calls to load the resume and job posting.",
+        },
+    )
+
+    call_names: dict[str, str] = {}
+    messages: list = list(input_state["messages"])
+
+    for chunk in agent.stream(input_state, stream_mode="updates"):
+        for update in chunk.values():
+            for message in update.get("messages", []):
+                messages.append(message)
+                if isinstance(message, AIMessage):
+                    if message.tool_calls:
+                        for call in message.tool_calls:
+                            call_names[call["id"]] = call["name"]
+                            _emit(
+                                on_event,
+                                {
+                                    "event": "tool_call",
+                                    "node": "research_inputs",
+                                    "tool": call["name"],
+                                    "args_preview": _preview_tool_args(
+                                        call["name"], call.get("args", {})
+                                    ),
+                                    "detail": f"Calling `{call['name']}`",
+                                },
+                            )
+                    elif message.content:
+                        text = (
+                            message.content
+                            if isinstance(message.content, str)
+                            else str(message.content)
+                        ).strip()
+                        if text:
+                            _emit(
+                                on_event,
+                                {
+                                    "event": "thought",
+                                    "node": "research_inputs",
+                                    "content": text[:600],
+                                    "detail": "Research agent summary",
+                                },
+                            )
+                elif isinstance(message, ToolMessage):
+                    tool_name = call_names.get(
+                        message.tool_call_id, message.name or "tool"
+                    )
+                    content = (
+                        message.content
+                        if isinstance(message.content, str)
+                        else str(message.content)
+                    )
+                    _emit(
+                        on_event,
+                        {
+                            "event": "tool_result",
+                            "node": "research_inputs",
+                            "tool": tool_name,
+                            "preview": _preview_tool_result(tool_name, content),
+                            "detail": f"`{tool_name}` finished",
+                        },
+                    )
+
+    result = _finalize_research_result(
+        messages, resume_path, job_path_or_text, on_event=on_event
+    )
+    _emit(
+        on_event,
+        {
+            "event": "node_done",
+            "node": "research_inputs",
+            "detail": f"Research complete ({len(result['tool_trace'])} tool steps).",
+        },
+    )
+    return result
+
+
+def run_research_agent(resume_path: str, job_path_or_text: str) -> dict:
+    """Run research agent without streaming (CLI / tests)."""
+    agent = build_research_agent()
+    result = agent.invoke(
+        {
+            "messages": [
+                SystemMessage(content=RESEARCH_SYSTEM),
+                HumanMessage(
+                    content=(
+                        f"Resume path: {resume_path}\n"
+                        f"Job source (path, URL, or raw text):\n{job_path_or_text}"
+                    )
+                ),
+            ]
+        }
+    )
+    return _finalize_research_result(
+        result["messages"], resume_path, job_path_or_text
+    )
+
+
 def _collect_tool_outputs(messages: list) -> list[tuple[str, str]]:
-    """Map ToolMessages back to tool names using prior AIMessage tool_calls."""
     call_names: dict[str, str] = {}
     outputs: list[tuple[str, str]] = []
 
