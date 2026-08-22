@@ -10,6 +10,7 @@ from docx import Document
 from docx.shared import Pt
 
 from resume_agent.models import TailoredResume
+from resume_agent.parsers import extract_resume_text
 
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "summary": ("professional summary", "summary", "profile", "objective"),
@@ -49,7 +50,8 @@ def load_layout(source_path: Path) -> ResumeLayout:
     suffix = source_path.suffix.lower()
     if suffix == ".docx":
         return _layout_from_docx(source_path)
-    return _layout_from_text(source_path.read_text(encoding="utf-8"), source_path)
+    text = extract_resume_text(source_path)
+    return _layout_from_text(text, source_path)
 
 
 def _normalize_heading(text: str) -> str:

@@ -7,7 +7,38 @@ from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.shared import Pt
 
 from resume_agent.models import JobAnalysis, TailoredResume
-from resume_agent.structure import export_preserved_resume
+
+
+def tailored_to_plain_text(tailored: TailoredResume) -> str:
+    """Plain-text resume suitable for .txt download."""
+    lines: list[str] = [
+        tailored.professional_summary,
+        "",
+        "SKILLS",
+        ", ".join(tailored.skills_section),
+        "",
+        "EXPERIENCE",
+    ]
+    for entry in tailored.experience_entries:
+        for role_line in entry.role_lines:
+            lines.append(role_line)
+        for bullet in entry.bullets:
+            lines.append(f"- {bullet}")
+        lines.append("")
+
+    if tailored.education:
+        lines.extend(["EDUCATION"])
+        for item in tailored.education:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    if tailored.additional_sections:
+        lines.extend(["ADDITIONAL"])
+        for item in tailored.additional_sections:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    return "\n".join(lines).strip() + "\n"
 
 
 def tailored_to_markdown(
@@ -82,20 +113,13 @@ def export_tailored_resume(
     out_dir: Path,
     job: JobAnalysis | None = None,
 ) -> dict[str, Path]:
-    """Write tailored resume in the original format plus an audit report."""
+    """Write tailored resume as plain text (.txt)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     slug = _slug(job.title if job else "tailored")
-    suffix = source_path.suffix.lower() or ".txt"
 
-    primary_path = out_dir / f"resume_{slug}{suffix}"
-    report_path = out_dir / f"resume_{slug}_report.md"
-
-    export_preserved_resume(source_path, tailored, primary_path)
-    write_markdown(
-        tailored_to_markdown(tailored, job, include_audit=True),
-        report_path,
-    )
-    return {"primary": primary_path, "report": report_path}
+    primary_path = out_dir / f"resume_{slug}.txt"
+    write_markdown(tailored_to_plain_text(tailored), primary_path)
+    return {"primary": primary_path}
 
 
 def write_docx(

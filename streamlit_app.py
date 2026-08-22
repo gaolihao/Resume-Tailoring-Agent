@@ -8,7 +8,7 @@ from pathlib import Path
 import streamlit as st
 from streamlit.elements.widgets.chat import ChatInputValue
 
-from resume_agent.streaming import format_agent_event, stream_agent
+from resume_agent.streaming import StepwiseAgent
 
 ROOT = Path(__file__).resolve().parent
 SAMPLE_RESUME = ROOT / "examples" / "sample_resume.txt"
@@ -20,17 +20,17 @@ RESUME_TYPES = ["pdf", "docx", "txt", "md"]
 WELCOME = (
     "Hi! I tailor resumes to job postings using a LangGraph agent — with "
     "tool-calling research and guardrails so nothing gets invented.\n\n"
-    "First, attach your resume below (PDF, DOCX, or TXT). "
-    "You can also type `sample` to try the demo resume."
+    "First, attach your resume below (PDF, DOCX, or TXT), or click "
+    "**Use sample resume** to try the demo."
 )
 
 PROMPT_NEED_RESUME = (
-    "Please attach your resume file here, or type `sample` to use the demo resume."
+    "Please attach your resume file here, or click **Use sample resume** below."
 )
 
 PROMPT_NEED_JOB = (
     "Now paste the job description you're applying to, send a link to the posting, "
-    "or type `sample` to use the demo job."
+    "or click **Use sample job** below."
 )
 
 
@@ -42,6 +42,8 @@ def _init_session() -> None:
         "last_result": None,
         "pending_job": None,
         "job_run_phase": None,
+        "agent_runner": None,
+        "agent_executing_step": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -76,34 +78,136 @@ def _use_sample_resume() -> None:
     _set_resume(SAMPLE_RESUME, "sample_resume.txt")
 
 
+def _submit_sample_resume(user_display: str = "Use sample resume") -> None:
+    _append("user", user_display)
+    _use_sample_resume()
+
+
+def _submit_sample_job(user_display: str = "Use sample job") -> None:
+    sample_job = SAMPLE_JOB.read_text(encoding="utf-8")
+    _handle_job_submission(
+        sample_job,
+        user_display=user_display,
+        show_job_preview=True,
+    )
+
+
+def _agent_busy() -> bool:
+    return bool(
+        st.session_state.get("pending_job") or st.session_state.get("agent_runner")
+    )
+
+
+def _render_quick_actions() -> None:
+    if _agent_busy():
+        return
+
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        if not _has_resume():
+            if st.button("Use sample resume", use_container_width=True, key="sample_resume"):
+                _submit_sample_resume()
+                st.rerun()
+        elif not st.session_state.get("last_result"):
+            if st.button("Use sample job", use_container_width=True, key="sample_job"):
+                _submit_sample_job()
+
+
+PROGRESS_MARKER = "<!--agent-progress-->"
+
+
+def _progress_html(label: str) -> str:
+    safe_label = label.rstrip(".")
+    return f"""{PROGRESS_MARKER}
+<style>
+@keyframes agentDotPulse {{
+  0%, 80%, 100% {{ opacity: 0.2; }}
+  40% {{ opacity: 1; }}
+}}
+.agent-dot {{
+  animation: agentDotPulse 1.4s infinite ease-in-out both;
+  font-weight: bold;
+}}
+.agent-dot:nth-child(2) {{ animation-delay: 0.2s; }}
+.agent-dot:nth-child(3) {{ animation-delay: 0.4s; }}
+</style>
+<p><strong>{safe_label}<span aria-hidden="true"><span class="agent-dot">.</span><span class="agent-dot">.</span><span class="agent-dot">.</span></span></strong></p>"""
+
+
+def _is_progress_message(content: str) -> bool:
+    return content.startswith(PROGRESS_MARKER)
+
+
+def _render_message(content: str) -> None:
+    if _is_progress_message(content):
+        st.html(content[len(PROGRESS_MARKER) :].strip(), unsafe_allow_javascript=False)
+    else:
+        st.markdown(content)
+
+
 def _format_result_markdown(result: dict) -> str:
-    parts: list[str] = ["### Results", ""]
+    return "**All done.** Use the buttons below to preview or download your tailored resume (TXT)."
 
-    gaps = result.get("gap_analysis")
-    if gaps:
-        parts.append("#### Screening fit")
-        parts.append(f"- **Match score:** {gaps.match_score}/100")
-        parts.append(f"- **Matched:** {', '.join(gaps.matched_keywords[:12]) or '—'}")
-        parts.append(f"- **Missing:** {', '.join(gaps.missing_keywords[:12]) or '—'}")
-        parts.append(f"- **Positioning:** {gaps.positioning_advice}")
-        parts.append("")
 
-    tailored = result.get("tailored_resume")
-    if tailored:
-        parts.append("#### Changes made")
-        parts.extend(f"- {change}" for change in tailored.changes_made[:8])
-        parts.append("")
+def _preview_content(result: dict, primary_path: Path) -> str:
+    markdown = result.get("tailored_markdown")
+    if markdown:
+        return markdown.strip()
+    return primary_path.read_text(encoding="utf-8", errors="replace").strip()
 
-    review = result.get("quality_review")
-    if review:
-        status = "Approved" if review.approved else "Revised with notes"
-        parts.append(f"#### Quality review: {status}")
-        if review.issues:
-            parts.extend(f"- {issue}" for issue in review.issues[:6])
-        parts.append("")
 
-    parts.append("Download your tailored resume below (same format as your upload).")
-    return "\n".join(parts).strip()
+@st.dialog("Tailored resume preview", width="large")
+def _preview_dialog(content: str) -> None:
+    st.markdown(content)
+
+
+def _download_name(primary_path: Path) -> str:
+    if st.session_state.get("resume_label"):
+        stem = Path(st.session_state.resume_label).stem
+        return f"{stem}_tailored.txt"
+    return primary_path.with_suffix(".txt").name
+
+
+def _render_output_actions(result: dict) -> None:
+    primary = result.get("output_file_path")
+    if not primary or not Path(primary).exists():
+        return
+
+    primary_path = Path(primary)
+    download_name = _download_name(primary_path)
+    file_data = primary_path.read_bytes()
+
+    st.divider()
+    _, center, _ = st.columns([1, 2, 1])
+    with center:
+        st.download_button(
+            "Download tailored resume (TXT)",
+            data=file_data,
+            file_name=download_name,
+            mime="text/plain",
+            use_container_width=True,
+            type="primary",
+        )
+        if st.button("Preview tailored resume", use_container_width=True):
+            _preview_dialog(_preview_content(result, primary_path))
+
+
+def _append_step(content: str) -> None:
+    """Append an assistant message and render it as its own chat bubble."""
+    _append("assistant", content)
+    with st.chat_message("assistant"):
+        _render_message(content)
+
+
+def _replace_last_assistant(content: str) -> None:
+    if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        st.session_state.messages[-1]["content"] = content
+    else:
+        _append("assistant", content)
+
+
+def _append_progress_step(label: str) -> None:
+    _append_step(_progress_html(label))
 
 
 def _read_uploaded_text(uploaded_file) -> str:
@@ -156,55 +260,58 @@ def _process_pending_job() -> None:
 
     if phase == "preview":
         st.session_state.job_run_phase = "running"
-        st.rerun()
-
-    if phase != "running":
-        return
-
-    job_text = st.session_state.pop("pending_job")
-    st.session_state.job_run_phase = None
-
-    progress_placeholder = st.empty()
-    resume_path = Path(st.session_state.resume_path)
-    out_dir = UPLOAD_DIR / "output"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    final: dict = {}
-
-    def trace_stream():
-        for event in stream_agent(
-            resume_path=str(resume_path),
+        out_dir = UPLOAD_DIR / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        st.session_state.agent_runner = StepwiseAgent(
+            resume_path=st.session_state.resume_path,
             job_path_or_text=job_text.strip(),
             output_path=str(out_dir),
-        ):
-            if event.get("event") == "complete":
-                final["result"] = event.get("state")
-                continue
-            line = format_agent_event(event)
-            if line:
-                yield line + "\n"
+        )
+        st.rerun()
 
-        result = final.get("result")
-        if result is None:
-            raise RuntimeError("Agent finished without returning final state.")
+    runner = st.session_state.get("agent_runner")
+    if phase != "running" or runner is None:
+        return
 
-        yield "\n"
-        yield _format_result_markdown(result)
+    try:
+        if st.session_state.get("agent_executing_step"):
+            message, done = runner.run_next()
+            if message:
+                _replace_last_assistant(message)
+            st.session_state.agent_executing_step = False
+        else:
+            progress_label = runner.current_progress_label()
+            if progress_label:
+                _append_progress_step(progress_label)
+                st.session_state.agent_executing_step = True
+                st.rerun()
+                return
 
-    with progress_placeholder.container():
-        with st.chat_message("assistant"):
-            try:
-                full_trace = st.write_stream(trace_stream)
-                st.session_state.last_result = final["result"]
-                _append("assistant", full_trace.strip())
-            except Exception as exc:
-                _append(
-                    "assistant",
-                    f"**Error:** {exc}\n\nCheck that `GOOGLE_API_KEY` is set and valid.",
-                )
-                st.session_state.last_result = None
+            message, done = runner.run_next()
+            if message:
+                _append_step(message)
 
-    progress_placeholder.empty()
-    st.rerun()
+        if done:
+            st.session_state.pop("pending_job", None)
+            st.session_state.job_run_phase = None
+            st.session_state.agent_runner = None
+            st.session_state.agent_executing_step = False
+            st.session_state.last_result = runner.state
+            _append_step(_format_result_markdown(runner.state))
+            st.rerun()
+            return
+
+        st.rerun()
+    except Exception as exc:
+        st.session_state.pop("pending_job", None)
+        st.session_state.job_run_phase = None
+        st.session_state.agent_runner = None
+        st.session_state.agent_executing_step = False
+        st.session_state.last_result = None
+        _append_step(
+            f"**Error:** {exc}\n\nCheck that `GOOGLE_API_KEY` is set and valid."
+        )
+        st.rerun()
 
 
 def _handle_job_submission(
@@ -232,22 +339,9 @@ def _handle_job_submission(
 
 def _handle_resume_step(text: str, files: list) -> None:
     """Step 1: accept only a resume upload or `sample`."""
-    if text.lower() == "demo":
-        _append("user", text)
-        _use_sample_resume()
-        sample_job = SAMPLE_JOB.read_text(encoding="utf-8")
-        _queue_job_run(
-            sample_job,
-            user_display=text,
-            show_job_preview=True,
-            append_user=False,
-        )
-        st.rerun()
-        return
-
     if text.lower() == "sample":
-        _append("user", text)
-        _use_sample_resume()
+        _submit_sample_resume(text)
+        st.rerun()
         return
 
     if files:
@@ -280,12 +374,7 @@ def _handle_job_step(text: str, files: list) -> None:
         return
 
     if text.lower() == "sample":
-        sample_job = SAMPLE_JOB.read_text(encoding="utf-8")
-        _handle_job_submission(
-            sample_job,
-            user_display=text,
-            show_job_preview=True,
-        )
+        _submit_sample_job(text)
         return
 
     if text:
@@ -308,8 +397,8 @@ def _handle_chat_input(prompt: ChatInputValue) -> None:
 
 def _chat_placeholder() -> str:
     if not _has_resume():
-        return "Attach your resume, or type sample..."
-    return "Paste the job description, URL, or type sample..."
+        return "Attach your resume..."
+    return "Paste the job description or URL..."
 
 
 def main() -> None:
@@ -321,7 +410,9 @@ def main() -> None:
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            _render_message(message["content"])
+
+    _render_quick_actions()
 
     prompt = st.chat_input(
         _chat_placeholder(),
@@ -336,40 +427,7 @@ def main() -> None:
 
     result = st.session_state.get("last_result")
     if result:
-        primary = result.get("output_file_path")
-        report = result.get("output_report_path")
-        cols = st.columns(2)
-
-        if primary and Path(primary).exists():
-            primary_path = Path(primary)
-            mime_by_suffix = {
-                ".pdf": "application/pdf",
-                ".docx": (
-                    "application/vnd.openxmlformats-officedocument"
-                    ".wordprocessingml.document"
-                ),
-                ".txt": "text/plain",
-                ".md": "text/markdown",
-            }
-            download_name = primary_path.name
-            if st.session_state.get("resume_label"):
-                stem = Path(st.session_state.resume_label).stem
-                download_name = f"{stem}_tailored{primary_path.suffix}"
-
-            cols[0].download_button(
-                f"Download tailored resume ({primary_path.suffix.lstrip('.').upper()})",
-                data=primary_path.read_bytes(),
-                file_name=download_name,
-                mime=mime_by_suffix.get(primary_path.suffix.lower(), "application/octet-stream"),
-            )
-
-        if report and Path(report).exists():
-            cols[1].download_button(
-                "Download change report (Markdown)",
-                data=Path(report).read_bytes(),
-                file_name=Path(report).name,
-                mime="text/markdown",
-            )
+        _render_output_actions(result)
 
 
 if __name__ == "__main__":

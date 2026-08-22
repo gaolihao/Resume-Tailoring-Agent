@@ -172,5 +172,4 @@ def export_resume(state: AgentState) -> dict:
         "tailored_markdown": markdown,
         "output_path": str(out_dir),
         "output_file_path": str(paths["primary"]),
-        "output_report_path": str(paths["report"]),
     }

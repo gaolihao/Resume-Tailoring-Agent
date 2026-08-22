@@ -25,7 +25,7 @@ def extract_resume_text(path: str | Path) -> str:
             )
         text = extract_text_from_docx(file_path)
     elif suffix in {".txt", ".md"}:
-        text = file_path.read_text(encoding="utf-8")
+        text = file_path.read_text(encoding="utf-8", errors="replace")
     else:
         raise ValueError(
             f"Unsupported resume format '{suffix}'. "
