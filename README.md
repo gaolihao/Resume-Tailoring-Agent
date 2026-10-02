@@ -18,7 +18,7 @@ gap analysis (matches, misses, positioning)
         ↓
 tailor resume  ⇄  quality review (max 2 revision loops)
         ↓
-export Markdown + DOCX
+export plain-text resume (.txt)
 ```
 
 **Truth rules baked in:** the agent may rephrase, reorder, and emphasize what’s already on your resume. It will not fabricate jobs, metrics, tools, or credentials. `evidence_check` is a deterministic overlap tool (not another LLM).
@@ -50,11 +50,10 @@ streamlit run streamlit_app.py
 
 Open http://localhost:8501
 
-1. Attach your resume in the chat (or type `sample`)
-2. After it's loaded, paste the job description, URL, or type `sample` again for the demo job
-3. Review the results and download Markdown or DOCX
-
-Type `demo` to run the included sample resume + sample job in one step.
+1. Attach your resume in the chat (PDF, DOCX, or TXT), or click **Use sample resume**
+2. Paste the job description or a link to the posting, or click **Use sample job**
+3. Watch the agent work step by step: each step gets its own chat message, with animated dots while it runs and a short summary of what it found when it finishes (evidence checks, match score, changes made, review result)
+4. Click **Preview tailored resume** to read the result, or **Download tailored resume (TXT)** to save it
 
 ## CLI
 
@@ -75,10 +74,7 @@ Also:
 python -m resume_agent examples/sample_resume.txt --job examples/sample_job.txt
 ```
 
-Outputs:
-
-- `resume_<role>.<same-ext-as-upload>` — tailored resume in your original format (PDF/DOCX/TXT)
-- `resume_<role>_report.md` — change log and keyword audit (optional)
+Output: `resume_<role>.txt`, the tailored resume as plain text, whatever format you uploaded.
 
 ## Deploy on Render
 
@@ -127,7 +123,7 @@ The first graph node is a ReAct subgraph:
 
 | Format | Support |
 |--------|---------|
-| `.pdf` | Yes (`pypdf`) |
+| `.pdf` | Yes (`pymupdf`, falls back to `pypdf`) |
 | `.docx` | Yes (`python-docx`) |
 | `.txt` / `.md` | Yes |
 | `.doc` (legacy) | Convert to `.docx` or `.pdf` first |
@@ -148,12 +144,13 @@ streamlit_app.py     # Chat UI (local + Render)
 render.yaml          # Render Blueprint
 src/resume_agent/
   graph.py           # Outer StateGraph wiring
+  streaming.py       # Step-by-step runner + per-step feedback for the chat UI
   research_agent.py  # Tool-calling ReAct subgraph
   tools.py           # parse_resume, fetch_job_from_url, evidence_check, ...
   nodes.py           # research → analyze → gap → tailor → review → export
   models.py          # structured LLM outputs
   parsers/           # PDF / DOCX / text extraction
-  writers/           # Markdown + DOCX export
+  writers/           # Plain-text resume export
   cli.py             # Typer CLI
 ```
 
@@ -163,3 +160,9 @@ src/resume_agent/
 - Always review the tailored file before submitting — especially numbers and titles.
 - Keyword stuffing is intentionally discouraged by the quality-review node.
 - On a public Render deploy, consider rate limits or a demo-only mode to control API cost.
+
+## TODO
+
+- [ ] Support PDF output download
+- [ ] Support Word (DOCX) output download
+
